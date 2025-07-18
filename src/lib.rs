@@ -44,7 +44,7 @@ where
     }
 
     // -----------------------------------------------------------------------------------------------------------------
-    /// Attempt to fetch an item from get cache.
+    /// Attempt to fetch an item
     pub fn get(&self, key: &K) -> Option<V> {
         let mut inner = self.inner.lock().unwrap();
 
@@ -61,7 +61,7 @@ where
     }
 
     // -----------------------------------------------------------------------------------------------------------------
-    /// Fetches the most recently used item from the cache.
+    /// Fetches the most recently used item
     pub fn get_mru(&self) -> Option<V> {
         let inner = self.inner.lock().unwrap();
 
@@ -73,9 +73,10 @@ where
     }
 
     // -----------------------------------------------------------------------------------------------------------------
-    /// Inserts a new item into the cache.
+    /// Inserts a new item.
     /// If the item already exists, it returns the old value else it returns `None`
-    /// If the addition of the new item exceeds the cache's capacity, the oldest item is evicted
+    /// If the addition of the new item exceeds the cache's capacity, the oldest item is evicted before the new item is
+    /// added
     pub fn put(&self, key: K, value: V) -> Option<V> {
         let mut inner = self.inner.lock().unwrap();
 
