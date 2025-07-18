@@ -39,28 +39,6 @@ fn generate_test_data(size: usize) -> Vec<(String, String)> {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Single-threaded performance baseline
-#[test]
-fn measure_cache_insertion_without_eviction() -> Result<(), String> {
-    let cache_size = CACHE_SIZE_10K;
-    let cache = LruCache::new(cache_size);
-    let mut rng = rand::rng();
-    let start = Instant::now();
-
-    // Insert items without eviction
-    for idx in 0..cache_size {
-        cache.put(gen_item_key(idx), gen_item_value(idx, &mut rng));
-    }
-
-    println!(
-        "Single thread: Inserted {cache_size} items in {:?}",
-        start.elapsed()
-    );
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
 #[test]
 fn measure_single_thread_read_write_performance() -> Result<(), String> {
     let cache_size = CACHE_SIZE_1K;
