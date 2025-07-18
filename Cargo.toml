@@ -1,0 +1,19 @@
+[package]
+name = "lru-cache"
+version = "0.1.0"
+edition = "2024"
+authors = ["Chris Whealy <chris@whealy.com>"]
+
+[dependencies]
+
+[dev-dependencies]
+criterion = "0.6"
+rand = "0.9"
+
+[[bench]]
+name = "lru_bench"
+harness = false
+
+[lib]
+name = "lru_cache"
+path = "src/lib.rs"
