@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     hash::Hash,
+    num::NonZeroUsize,
     sync::Mutex,
 };
 
@@ -15,10 +16,10 @@ where
     K: Clone + Eq + Hash,
     V: Clone,
 {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(capacity: NonZeroUsize) -> Self {
         InnerCache {
-            store: HashMap::with_capacity(capacity),
-            order: VecDeque::with_capacity(capacity),
+            store: HashMap::with_capacity(capacity.get()),
+            order: VecDeque::with_capacity(capacity.get()),
         }
     }
 }
@@ -26,7 +27,7 @@ where
 // ---------------------------------------------------------------------------------------------------------------------
 /// Basic thread-safe LRU cache
 pub struct LruCache<K, V> {
-    capacity: usize,
+    capacity: NonZeroUsize,
     inner: Mutex<InnerCache<K, V>>,
 }
 
@@ -36,7 +37,7 @@ where
     K: Clone + Eq + Hash,
     V: Clone,
 {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(capacity: NonZeroUsize) -> Self {
         LruCache {
             capacity,
             inner: Mutex::new(InnerCache::new(capacity)),
@@ -92,7 +93,7 @@ where
             old_value
         } else {
             // No: Add item
-            if inner.store.len() >= self.capacity {
+            if inner.store.len() >= self.capacity.get() {
                 if let Some(last) = inner.order.pop_back() {
                     // Evict oldest item
                     inner.store.remove(&last);
@@ -114,16 +115,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::thread;
+    use std::{num::NonZero, sync::Arc, thread};
 
-    const CAPACITY: usize = 10;
+    const CAPACITY: NonZero<usize> = NonZeroUsize::new(10).unwrap();
 
-    fn test_item_key_gen(idx: usize) -> String {
+    fn gen_item_key(idx: usize) -> String {
         format!("item-{idx}")
     }
 
-    fn test_item_value_gen(idx: usize) -> String {
+    fn gen_item_value(idx: usize) -> String {
         format!("Value for item-{idx}")
     }
 
@@ -138,8 +138,8 @@ mod tests {
     fn default_prefilled_cache() -> LruCache<String, String> {
         let c = default_empty_cache();
 
-        for idx in 0..CAPACITY {
-            let _ = c.put(test_item_key_gen(idx), test_item_value_gen(idx));
+        for idx in 0..CAPACITY.get() {
+            let _ = c.put(gen_item_key(idx), gen_item_value(idx));
         }
 
         c
@@ -149,8 +149,8 @@ mod tests {
     #[test]
     fn should_put_an_item() -> Result<(), String> {
         let c = default_empty_cache();
-        let k = test_item_key_gen(1);
-        let v = test_item_value_gen(1);
+        let k = gen_item_key(1);
+        let v = gen_item_value(1);
 
         c.put(k.clone(), &v);
         c.get(&k).ok_or(format!("{k} Not Found"))?;
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn should_get_an_existing_item() -> Result<(), String> {
         let c = default_prefilled_cache();
-        let k = test_item_key_gen(6);
+        let k = gen_item_key(6);
 
         c.get(&k).ok_or(format!("Expected item '{k}' not found"))?;
 
@@ -173,8 +173,8 @@ mod tests {
     #[test]
     fn last_inserted_item_should_be_mru() -> Result<(), String> {
         let c = default_prefilled_cache();
-        let k = test_item_key_gen(CAPACITY - 1);
-        let v = test_item_value_gen(CAPACITY - 1);
+        let k = gen_item_key(CAPACITY.get() - 1);
+        let v = gen_item_value(CAPACITY.get() - 1);
 
         match c.get(&k) {
             Some(mru) if mru == v => Ok(()),
@@ -186,8 +186,8 @@ mod tests {
     #[test]
     fn should_get_expected_mru_after_reorder() -> Result<(), String> {
         let c = default_prefilled_cache();
-        let k = test_item_key_gen(6);
-        let v = test_item_value_gen(6);
+        let k = gen_item_key(6);
+        let v = gen_item_value(6);
         let err_msg = format!("MRU item should be '{v}'");
 
         c.get(&k).ok_or(format!("{k} not found"))?;
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn should_fail_to_get_nonexistent_item() -> Result<(), String> {
         let c = default_prefilled_cache();
-        let k = test_item_key_gen(10);
+        let k = gen_item_key(10);
 
         if c.get(&k).is_some() {
             Err(format!("Found item '{k}' that should not exist in cache"))
@@ -216,9 +216,9 @@ mod tests {
     #[test]
     fn should_fail_to_get_evicted_item() -> Result<(), String> {
         let c = default_prefilled_cache();
-        let old_k = test_item_key_gen(0);
-        let new_k = test_item_key_gen(10);
-        let v = test_item_value_gen(10);
+        let old_k = gen_item_key(0);
+        let new_k = gen_item_key(10);
+        let v = gen_item_value(10);
 
         // Adding a new item to a full cache evicts the oldest item
         c.put(new_k, v);
@@ -236,8 +236,8 @@ mod tests {
     #[test]
     fn should_get_mru_after_item_eviction() -> Result<(), String> {
         let c = default_prefilled_cache();
-        let k = test_item_key_gen(10);
-        let v = test_item_value_gen(10);
+        let k = gen_item_key(10);
+        let v = gen_item_value(10);
 
         // Adding a new item evicts the oldest item and makes it the MRU
         c.put(k.clone(), v.clone());
@@ -252,7 +252,7 @@ mod tests {
     // -----------------------------------------------------------------------------------------------------------------
     #[test]
     fn thread2_should_add_new_item() -> Result<(), String> {
-        let cache = Arc::new(LruCache::new(2));
+        let cache = Arc::new(LruCache::new(NonZeroUsize::new(2).unwrap()));
         let k1 = String::from("apple");
         let k2 = String::from("pear");
         let k2_clone = k2.clone();

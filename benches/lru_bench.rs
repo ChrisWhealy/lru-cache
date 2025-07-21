@@ -3,15 +3,17 @@ use lru_cache::LruCache;
 use rand::Rng;
 use std::{
     hint::black_box,
+    num::{NonZero, NonZeroUsize},
     sync::{Arc, Barrier},
     thread,
 };
 
-const CACHE_SIZE_100: usize = 100;
-const CACHE_SIZE_500: usize = 500;
-const CACHE_SIZE_1K: usize = 1000;
-const CACHE_SIZE_5K: usize = 5000;
-const CACHE_SIZE_10K: usize = 10000;
+const CACHE_SIZE_100: NonZero<usize> = NonZeroUsize::new(100).unwrap();
+const CACHE_SIZE_500: NonZero<usize> = NonZeroUsize::new(500).unwrap();
+const CACHE_SIZE_1K: NonZero<usize> = NonZeroUsize::new(1000).unwrap();
+const CACHE_SIZE_5K: NonZero<usize> = NonZeroUsize::new(5000).unwrap();
+const CACHE_SIZE_10K: NonZero<usize> = NonZeroUsize::new(10000).unwrap();
+const DATASET_SIZE_1K: usize = 1000;
 const DATASET_SIZE_5K: usize = 5000;
 const THREAD_COUNT: usize = 8;
 const OPERATIONS_PER_THREAD: usize = 1000;
@@ -22,31 +24,8 @@ fn gen_item_key(idx: usize) -> String {
     black_box(format!("item-{idx}"))
 }
 
-fn gen_item_key_in_thread(thread_id: usize, idx: usize) -> String {
-    black_box(format!("thread-{thread_id}-item-{idx}"))
-}
-
 fn gen_item_value(val: u32) -> String {
     black_box(format!("value-{val}"))
-}
-
-fn generate_test_data(size: usize) -> Vec<(String, String)> {
-    let mut rng = rand::rng();
-    (0..size)
-        .map(|i| (gen_item_key(i), gen_item_value(rng.random::<u32>())))
-        .collect()
-}
-
-fn generate_threaded_test_data(size: usize, thread_id: usize) -> Vec<(String, String)> {
-    let mut rng = rand::rng();
-    (0..size)
-        .map(|i| {
-            (
-                gen_item_key_in_thread(thread_id, i),
-                gen_item_value(rng.random::<u32>()),
-            )
-        })
-        .collect()
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -57,7 +36,7 @@ fn single_threaded_insertion_without_eviction(c: &mut Criterion) {
 
     c.bench_function("single_threaded_insertion_without_eviction", |b| {
         b.iter(|| {
-            for i in 0..cache_size {
+            for i in 0..cache_size.get() {
                 cache.put(gen_item_key(i), gen_item_value(i as u32));
             }
         })
@@ -72,7 +51,7 @@ fn single_threaded_get(c: &mut Criterion) {
     let cache = LruCache::new(cache_size);
 
     // Pre-populate cache
-    for i in 0..cache_size {
+    for i in 0..cache_size.get() {
         cache.put(gen_item_key(i), gen_item_value(rng.random::<u32>()));
     }
 
@@ -81,40 +60,37 @@ fn single_threaded_get(c: &mut Criterion) {
 
         b.iter(|| {
             cache.get(&gen_item_key(idx));
-            idx = rng.random_range(0..cache_size);
+            idx = rng.random_range(0..cache_size.get());
         })
     });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-/// Multiple threads perform random reads against a pre-filled cache
+/// `THR£AD_COUNT` threads perform random reads against a pre-filled cache
 fn multi_threaded_get(c: &mut Criterion) {
-    let cache = Arc::new(LruCache::new(CACHE_SIZE_1K));
+    let mut rng = rand::rng();
+    let cache = Arc::new(LruCache::new(CACHE_SIZE_5K));
     let barrier = Arc::new(Barrier::new(THREAD_COUNT));
+
+    // Pre-fill cache
+    for idx in 0..DATASET_SIZE_5K {
+        cache.put(gen_item_key(idx), gen_item_value(rng.random::<u32>()));
+    }
 
     c.bench_function("multi_threaded_get", |b| {
         b.iter(|| {
             let mut handles = vec![];
 
-            for thread_id in 0..THREAD_COUNT {
-                let test_data = Arc::new(generate_threaded_test_data(thread_id, DATASET_SIZE_5K));
+            for _ in 0..THREAD_COUNT {
                 let cache_clone = Arc::clone(&cache);
-                let test_data_clone = Arc::clone(&test_data);
                 let barrier_clone = Arc::clone(&barrier);
 
-                // Pre-fill cache
-                for (key, value) in &*test_data_clone {
-                    cache_clone.put(key.clone(), value.clone());
-                }
-
                 let handle = thread::spawn(move || {
-                    barrier_clone.wait();
                     let mut rng = rand::rng();
-                    let mut idx = 0;
+                    barrier_clone.wait();
 
                     for _ in 0..OPERATIONS_PER_THREAD {
-                        cache_clone.get(&gen_item_key(idx));
-                        idx = rng.random_range(0..CACHE_SIZE_1K);
+                        cache_clone.get(&gen_item_key(rng.random_range(0..CACHE_SIZE_1K.get())));
                     }
                 });
 
@@ -146,8 +122,8 @@ fn single_threaded_put_multiple_cache_sizes(c: &mut Criterion) {
             let mut idx = 0;
             b.iter(|| {
                 cache.put(
-                    gen_item_key(black_box(idx)),
-                    gen_item_value(black_box(idx as u32)),
+                    black_box(gen_item_key(idx)),
+                    black_box(gen_item_value(idx as u32)),
                 );
                 idx += 1;
             })
@@ -158,20 +134,20 @@ fn single_threaded_put_multiple_cache_sizes(c: &mut Criterion) {
 // ---------------------------------------------------------------------------------------------------------------------
 /// A single-thread overfills the cache forcing LRU eviction
 fn single_threaded_eviction_performance(c: &mut Criterion) {
-    let cache = LruCache::new(CACHE_SIZE_1K);
-    let test_data = generate_test_data(DATASET_SIZE_5K);
+    let cache = Arc::new(LruCache::new(CACHE_SIZE_1K));
+    let mut rng = rand::rng();
 
     c.bench_function("single_threaded_eviction_performance", |b| {
         b.iter(|| {
-            for (key, value) in &test_data {
-                cache.put(key.clone(), value.clone());
+            for idx in 0..DATASET_SIZE_5K {
+                cache.put(gen_item_key(idx), gen_item_value(rng.random::<u32>()));
             }
         })
     });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-/// Multiple threads overfill the cache forcing LRU eviction with possible lock contention
+/// `THREAD_COUNT` threads each fill the cache with `CACHE_SIZE` items, but in doing so, force LRU eviction
 fn multi_threaded_eviction_performance(c: &mut Criterion) {
     let cache = Arc::new(LruCache::new(CACHE_SIZE_1K));
     let barrier = Arc::new(Barrier::new(THREAD_COUNT));
@@ -180,19 +156,16 @@ fn multi_threaded_eviction_performance(c: &mut Criterion) {
         b.iter(|| {
             let mut handles = vec![];
 
-            for thread_id in 0..THREAD_COUNT {
-                let test_data = Arc::new(generate_threaded_test_data(thread_id, DATASET_SIZE_5K));
+            for _ in 0..THREAD_COUNT {
                 let cache_clone = Arc::clone(&cache);
-                let test_data_clone = Arc::clone(&test_data);
                 let barrier_clone = Arc::clone(&barrier);
 
                 let handle = thread::spawn(move || {
+                    let mut rng = rand::rng();
                     barrier_clone.wait();
 
-                    for _ in 0..OPERATIONS_PER_THREAD {
-                        for (key, value) in &*test_data_clone {
-                            cache_clone.put(key.clone(), value.clone());
-                        }
+                    for idx in 0..DATASET_SIZE_1K {
+                        cache_clone.put(gen_item_key(idx), gen_item_value(rng.random::<u32>()));
                     }
                 });
 
@@ -207,32 +180,39 @@ fn multi_threaded_eviction_performance(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-/// Multiple threads hammer the cache with an equal number reads and writes
-fn multi_threaded_mixed_operations(c: &mut Criterion) {
-    c.bench_function("multi_threaded_mixed_operations", |b| {
-        let cache = Arc::new(LruCache::new(CACHE_SIZE_1K));
-        let barrier = Arc::new(Barrier::new(THREAD_COUNT));
+/// `THREAD_COUNT` threads perform operations designed to create contention
+fn multi_threaded_contention(c: &mut Criterion) {
+    let mut rng = rand::rng();
+    let cache = Arc::new(LruCache::new(CACHE_SIZE_5K));
+    let barrier = Arc::new(Barrier::new(THREAD_COUNT));
 
+    // Pre-fill cache
+    for idx in 0..DATASET_SIZE_5K {
+        cache.put(gen_item_key(idx), gen_item_value(rng.random::<u32>()));
+    }
+
+    c.bench_function("multi_threaded_contention", |b| {
         b.iter(|| {
             let mut handles = vec![];
 
-            for thread_id in 0..THREAD_COUNT {
+            for _ in 0..THREAD_COUNT {
                 let cache_clone = Arc::clone(&cache);
                 let barrier_clone = Arc::clone(&barrier);
 
                 let handle = thread::spawn(move || {
                     barrier_clone.wait();
 
-                    for i in 0..OPERATIONS_PER_THREAD {
-                        let key = gen_item_key_in_thread(thread_id, i);
-                        let value = gen_item_value(i as u32);
-
-                        // Alternate between reading and writing
-                        if i % 2 == 0 {
-                            cache_clone.put(key, value);
-                        } else {
-                            cache_clone.get(&key);
-                        }
+                    // Perform a mix of operations
+                    for idx in 0..OPERATIONS_PER_THREAD {
+                        match idx % 10 {
+                            // 70% reads
+                            0..=6 => cache_clone.get(&gen_item_key(idx)),
+                            // 20% writes
+                            7..=8 => cache_clone.put(gen_item_key(idx), gen_item_value(idx as u32)),
+                            // 10% get_mru
+                            9 => cache_clone.get_mru(),
+                            _ => unreachable!(),
+                        };
                     }
                 });
 
@@ -255,7 +235,7 @@ criterion_group!(
     multi_threaded_get,
     single_threaded_put_multiple_cache_sizes,
     single_threaded_eviction_performance,
-    multi_threaded_mixed_operations
+    multi_threaded_contention
 );
 
 criterion_main!(benches);

@@ -1,8 +1,8 @@
 use lru_cache::LruCache;
-use std::{sync::Arc, thread};
+use std::{num::NonZeroUsize, sync::Arc, thread};
 
 fn main() {
-    let cache = Arc::new(LruCache::new(2));
+    let cache = Arc::new(LruCache::new(NonZeroUsize::new(2).unwrap()));
 
     let cache1 = Arc::clone(&cache);
     let jh1 = thread::spawn(move || {
