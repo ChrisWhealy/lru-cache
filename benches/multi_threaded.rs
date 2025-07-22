@@ -1,33 +1,19 @@
+mod common;
+
+use common::*;
+use lru_cache::test_utils::*;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use lru::LruCache;
 use lru_cache::LruCache as MyLruCache;
 use rand::Rng;
 use std::{
-    hint::black_box,
-    num::{NonZero, NonZeroUsize},
     sync::{Arc, Barrier, Mutex},
     thread,
     time::Duration,
 };
 
-const CACHE_SIZES: [NonZero<usize>; 3] = [
-    NonZeroUsize::new(1000).unwrap(),
-    NonZeroUsize::new(5000).unwrap(),
-    NonZeroUsize::new(10000).unwrap(),
-];
-
 const THREAD_COUNT: usize = 8;
 const OPERATIONS_PER_THREAD: usize = 1000;
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Helper functions to generate test data
-fn gen_item_key(idx: usize) -> String {
-    black_box(format!("item-{idx}"))
-}
-
-fn gen_item_value(val: u32) -> String {
-    black_box(format!("value-{val}"))
-}
 
 // ---------------------------------------------------------------------------------------------------------------------
 /// Multi-threaded reads of known items from a pre-filled cache
@@ -68,7 +54,8 @@ fn get(c: &mut Criterion) {
                                 for _ in 0..OPERATIONS_PER_THREAD {
                                     let mut unlocked_cache = cache_clone.lock().unwrap();
                                     let rnd_idx = rng.random_range(0..size.get());
-                                    if let Some(_value) = unlocked_cache.get(&gen_item_key(rnd_idx)) {
+                                    if let Some(_value) = unlocked_cache.get(&gen_item_key(rnd_idx))
+                                    {
                                     };
                                 }
                             });
@@ -116,7 +103,8 @@ fn get(c: &mut Criterion) {
                                 for _ in 0..OPERATIONS_PER_THREAD {
                                     let unlocked_cache = cache_clone.lock().unwrap();
                                     let rnd_idx = rng.random_range(0..size.get());
-                                    if let Some(_value) = unlocked_cache.get(&gen_item_key(rnd_idx)) {
+                                    if let Some(_value) = unlocked_cache.get(&gen_item_key(rnd_idx))
+                                    {
                                     };
                                 }
                             });
@@ -182,7 +170,8 @@ fn put(c: &mut Criterion) {
                                         }
                                         // 20% writes
                                         7..=8 => {
-                                            unlocked_cache.put(gen_item_key(idx), gen_item_value(idx as u32));
+                                            unlocked_cache
+                                                .put(gen_item_key(idx), gen_item_value(idx as u32));
                                         }
                                         // 10% get_mru
                                         9 => {
@@ -242,7 +231,8 @@ fn put(c: &mut Criterion) {
                                         }
                                         // 20% writes
                                         7..=8 => {
-                                            unlocked_cache.put(gen_item_key(idx), gen_item_value(idx as u32));
+                                            unlocked_cache
+                                                .put(gen_item_key(idx), gen_item_value(idx as u32));
                                         }
                                         // 10% get_mru
                                         9 => {

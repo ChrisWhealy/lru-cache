@@ -1,27 +1,12 @@
+mod common;
+
+use common::*;
+use lru_cache::test_utils::*;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use lru::LruCache;
 use lru_cache::LruCache as MyLruCache;
 use rand::Rng;
-use std::{
-    hint::black_box,
-    num::{NonZero, NonZeroUsize},
-    time::Duration,
-};
-
-const CACHE_SIZES: [NonZero<usize>; 3] = [
-    NonZeroUsize::new(1000).unwrap(),
-    NonZeroUsize::new(5000).unwrap(),
-    NonZeroUsize::new(10000).unwrap(),
-];
-
-// ---------------------------------------------------------------------------------------------------------------------
-fn gen_item_key(idx: usize) -> String {
-    black_box(format!("item-{idx}"))
-}
-
-fn gen_item_value(val: u32) -> String {
-    black_box(format!("value-{val}"))
-}
+use std::time::Duration;
 
 // ---------------------------------------------------------------------------------------------------------------------
 /// Exactly fill the cache

@@ -1,15 +1,8 @@
 use super::*;
+use test_utils::*;
 use std::{num::NonZero, sync::Arc, thread};
 
 const CAPACITY: NonZero<usize> = NonZeroUsize::new(10).unwrap();
-
-fn gen_item_key(idx: usize) -> String {
-    format!("item-{idx}")
-}
-
-fn gen_item_value(idx: usize) -> String {
-    format!("Value for item-{idx}")
-}
 
 fn default_empty_cache<K, V>() -> LruCache<K, V>
 where
@@ -23,7 +16,7 @@ fn default_prefilled_cache() -> LruCache<String, String> {
     let c = default_empty_cache();
 
     for idx in 0..CAPACITY.get() {
-        let _ = c.put(gen_item_key(idx), gen_item_value(idx));
+        let _ = c.put(gen_item_key(idx), gen_item_value(idx as u32));
     }
 
     c
@@ -58,7 +51,7 @@ fn should_get_an_existing_item() -> Result<(), String> {
 fn last_inserted_item_should_be_mru() -> Result<(), String> {
     let c = default_prefilled_cache();
     let k = gen_item_key(CAPACITY.get() - 1);
-    let v = gen_item_value(CAPACITY.get() - 1);
+    let v = gen_item_value(CAPACITY.get() as u32 - 1);
 
     match c.get(&k) {
         Some(mru) if mru == v => Ok(()),
