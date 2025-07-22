@@ -1,6 +1,6 @@
 # Small Threadsafe Implementation of a Least Recently Used Cache
 
-This is an exercise in implementing an LRU cache, then writing some benchmarks to examine performance
+This is an exercise in implementing an LRU cache, then writing some benchmarks to comapre performance between this implementation and the widely used `lru` crate.
 
 ## Testing
 
