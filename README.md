@@ -8,4 +8,6 @@ This is an exercise in implementing an LRU cache, then writing some benchmarks t
 
 ## Benchmarking
 
-`cargo bench`
+Single threaded tests `cargo bench --bench single_threaded`
+
+Multi-threaded tests `cargo bench --bench multi_threaded`

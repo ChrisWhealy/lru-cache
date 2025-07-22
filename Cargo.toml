@@ -12,7 +12,11 @@ criterion = "0.6"
 rand = "0.9"
 
 [[bench]]
-name = "lru_bench"
+name = "single_threaded"
+harness = false
+
+[[bench]]
+name = "multi_threaded"
 harness = false
 
 [lib]

@@ -1,6 +1,5 @@
 use std::num::{NonZero, NonZeroUsize};
 use lru_cache::LruCache;
-// use lru::LruCache;
 
 use rand::{Rng, rngs::ThreadRng};
 
@@ -54,6 +53,8 @@ fn measure_cache_hit_ratio() -> Result<(), String> {
     }
 
     let hit_ratio = hits as f64 / (hits + misses) as f64;
+
+    println!("Hit ratio = {:.2}%", hit_ratio * 100.0);
 
     // Should have a decent hit ratio
     if hit_ratio < cache_success_threshold {
