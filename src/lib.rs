@@ -2,33 +2,14 @@ use std::{
     collections::{HashMap, VecDeque},
     hash::Hash,
     num::NonZeroUsize,
-    sync::Mutex,
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
-struct InnerCache<K, V> {
-    store: HashMap<K, V>,
-    order: VecDeque<K>,
-}
-
-impl<K, V> InnerCache<K, V>
-where
-    K: Clone + Eq + Hash,
-    V: Clone,
-{
-    pub fn new(capacity: NonZeroUsize) -> Self {
-        InnerCache {
-            store: HashMap::with_capacity(capacity.get()),
-            order: VecDeque::with_capacity(capacity.get()),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-/// Basic thread-safe LRU cache
+/// LRU cache
 pub struct LruCache<K, V> {
     capacity: NonZeroUsize,
-    inner: Mutex<InnerCache<K, V>>,
+    store: HashMap<K, V>,
+    order: VecDeque<K>,
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -40,21 +21,20 @@ where
     pub fn new(capacity: NonZeroUsize) -> Self {
         LruCache {
             capacity,
-            inner: Mutex::new(InnerCache::new(capacity)),
+            store: HashMap::with_capacity(capacity.get()),
+            order: VecDeque::with_capacity(capacity.get()),
         }
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     /// Attempt to fetch an item
-    pub fn get(&self, key: &K) -> Option<V> {
-        let mut inner = self.inner.lock().unwrap();
-
-        if let Some(value) = inner.store.get(key).cloned() {
+    pub fn get(&mut self, key: &K) -> Option<V> {
+        if let Some(value) = self.store.get(key).cloned() {
             // Update key's order to MRU
-            if let Some(pos) = inner.order.iter().position(|k| *k == *key) {
-                inner.order.remove(pos);
+            if let Some(pos) = self.order.iter().position(|k| *k == *key) {
+                self.order.remove(pos);
             }
-            inner.order.push_front(key.clone());
+            self.order.push_front(key.clone());
             Some(value)
         } else {
             None
@@ -63,11 +43,19 @@ where
 
     // -----------------------------------------------------------------------------------------------------------------
     /// Removes the most recently used item
-    pub fn pop_mru(&self) -> Option<V> {
-        let mut inner = self.inner.lock().unwrap();
+    pub fn pop_mru(&mut self) -> Option<V> {
+        if let Some(popped_key) = self.order.pop_front() {
+            self.store.remove(&popped_key)
+        } else {
+            None
+        }
+    }
 
-        if let Some(popped_key) = inner.order.pop_front() {
-            inner.store.remove(&popped_key)
+    // -----------------------------------------------------------------------------------------------------------------
+    /// Removes the least recently used item
+    pub fn pop_lru(&mut self) -> Option<V> {
+        if let Some(popped_key) = self.order.pop_back() {
+            self.store.remove(&popped_key)
         } else {
             None
         }
@@ -78,34 +66,22 @@ where
     /// * If the item already exists, it returns the old value else it returns `None`
     /// * If the addition of the new item exceeds the cache's capacity, the oldest item is evicted before the new item is
     /// added
-    pub fn put(&self, key: K, value: V) -> Option<V> {
-        let mut inner = self.inner.lock().unwrap();
-
-        // Item already exists?
-        let old_value = if inner.store.contains_key(&key) {
-            // Yes: update value
-            let old_value = inner.store.insert(key.clone(), value);
-
-            // Remove item's existing position in order
-            if let Some(pos) = inner.order.iter().position(|k| *k == key) {
-                inner.order.remove(pos);
+    pub fn put(&mut self, key: K, new_value: V) -> Option<V> {
+        if self.store.contains_key(&key) {
+            // Remove existing item's old position in order
+            if let Some(pos) = self.order.iter().position(|k| *k == key) {
+                self.order.remove(pos);
             }
-            old_value
         } else {
-            // No: Add item
-            if inner.store.len() >= self.capacity.get() {
-                if let Some(last) = inner.order.pop_back() {
-                    // Evict oldest item
-                    inner.store.remove(&last);
+            if self.store.len() >= self.capacity.get() {
+                if let Some(oldest) = self.order.pop_back() {
+                    self.store.remove(&oldest);
                 }
             }
-
-            inner.store.insert(key.clone(), value);
-            None
         };
 
-        inner.order.push_front(key);
-        old_value
+        self.order.push_front(key.clone());
+        self.store.insert(key, new_value)
     }
 }
 

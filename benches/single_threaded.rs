@@ -24,7 +24,7 @@ fn insertion_without_eviction(c: &mut Criterion) {
             |b, &size| {
                 b.iter_batched(
                     || MyLruCache::new(size),
-                    |cache| {
+                    |mut cache| {
                         for i in 0..size.get() {
                             cache.put(gen_item_key(i), gen_item_value(i as u32));
                         }
@@ -94,7 +94,7 @@ fn get(c: &mut Criterion) {
             |b, &size| {
                 b.iter_batched(
                     || {
-                        let cache = MyLruCache::new(size);
+                        let mut cache = MyLruCache::new(size);
 
                         // Pre-populate cache
                         for i in 0..size.get() {
@@ -103,7 +103,7 @@ fn get(c: &mut Criterion) {
 
                         cache
                     },
-                    |cache| {
+                    |mut cache| {
                         let mut rng = rand::rng();
                         cache.get(&gen_item_key(rng.random_range(0..size.get())));
                     },
@@ -156,7 +156,7 @@ fn put(c: &mut Criterion) {
             |b, &size| {
                 b.iter_batched(
                     || {
-                        let cache = MyLruCache::new(size);
+                        let mut cache = MyLruCache::new(size);
 
                         // Pre-populate cache
                         for i in 0..size.get() {
@@ -165,7 +165,7 @@ fn put(c: &mut Criterion) {
 
                         cache
                     },
-                    |cache| {
+                    |mut cache| {
                         cache.put(
                             gen_item_key(rng.random_range(0..size.get() * 2)),
                             gen_item_value(rng.random_range(0..size.get() * 2) as u32),

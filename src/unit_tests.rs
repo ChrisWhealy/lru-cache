@@ -1,6 +1,6 @@
 use super::*;
 use test_utils::*;
-use std::{num::NonZero, sync::Arc, thread};
+use std::{num::NonZero, sync::{Arc, Barrier, Mutex}, thread};
 
 const CAPACITY: NonZero<usize> = NonZeroUsize::new(10).unwrap();
 
@@ -13,7 +13,7 @@ where
 }
 
 fn default_prefilled_cache() -> LruCache<String, String> {
-    let c = default_empty_cache();
+    let mut c = default_empty_cache();
 
     for idx in 0..CAPACITY.get() {
         let _ = c.put(gen_item_key(idx), gen_item_value(idx as u32));
@@ -25,7 +25,7 @@ fn default_prefilled_cache() -> LruCache<String, String> {
 // -----------------------------------------------------------------------------------------------------------------
 #[test]
 fn should_put_an_item() -> Result<(), String> {
-    let c = default_empty_cache();
+    let mut c = default_empty_cache();
     let k = gen_item_key(1);
     let v = gen_item_value(1);
 
@@ -38,7 +38,7 @@ fn should_put_an_item() -> Result<(), String> {
 // -----------------------------------------------------------------------------------------------------------------
 #[test]
 fn should_get_an_existing_item() -> Result<(), String> {
-    let c = default_prefilled_cache();
+    let mut c = default_prefilled_cache();
     let k = gen_item_key(6);
 
     c.get(&k).ok_or(format!("Expected item '{k}' not found"))?;
@@ -49,7 +49,7 @@ fn should_get_an_existing_item() -> Result<(), String> {
 // -----------------------------------------------------------------------------------------------------------------
 #[test]
 fn last_inserted_item_should_be_mru() -> Result<(), String> {
-    let c = default_prefilled_cache();
+    let mut c = default_prefilled_cache();
     let k = gen_item_key(CAPACITY.get() - 1);
     let v = gen_item_value(CAPACITY.get() as u32 - 1);
 
@@ -62,7 +62,7 @@ fn last_inserted_item_should_be_mru() -> Result<(), String> {
 // -----------------------------------------------------------------------------------------------------------------
 #[test]
 fn should_pop_expected_mru_after_reorder() -> Result<(), String> {
-    let c = default_prefilled_cache();
+    let mut c = default_prefilled_cache();
     let k = gen_item_key(6);
     let v = gen_item_value(6);
     let err_msg = format!("MRU item should be '{v}'");
@@ -79,7 +79,7 @@ fn should_pop_expected_mru_after_reorder() -> Result<(), String> {
 // -----------------------------------------------------------------------------------------------------------------
 #[test]
 fn should_fail_to_get_nonexistent_item() -> Result<(), String> {
-    let c = default_prefilled_cache();
+    let mut c = default_prefilled_cache();
     let k = gen_item_key(10);
 
     if c.get(&k).is_some() {
@@ -92,7 +92,7 @@ fn should_fail_to_get_nonexistent_item() -> Result<(), String> {
 // -----------------------------------------------------------------------------------------------------------------
 #[test]
 fn should_fail_to_get_evicted_item() -> Result<(), String> {
-    let c = default_prefilled_cache();
+    let mut c = default_prefilled_cache();
     let old_k = gen_item_key(0);
     let new_k = gen_item_key(10);
     let v = gen_item_value(10);
@@ -112,7 +112,7 @@ fn should_fail_to_get_evicted_item() -> Result<(), String> {
 // -----------------------------------------------------------------------------------------------------------------
 #[test]
 fn should_pop_mru_after_item_eviction() -> Result<(), String> {
-    let c = default_prefilled_cache();
+    let mut c = default_prefilled_cache();
     let k = gen_item_key(10);
     let v = gen_item_value(10);
 
@@ -129,26 +129,36 @@ fn should_pop_mru_after_item_eviction() -> Result<(), String> {
 // -----------------------------------------------------------------------------------------------------------------
 #[test]
 fn thread2_should_add_new_item() -> Result<(), String> {
-    let cache = Arc::new(LruCache::new(NonZeroUsize::new(2).unwrap()));
+    let barrier = Arc::new(Barrier::new(2));
+    let cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(2).unwrap())));
     let k1 = String::from("apple");
     let k2 = String::from("pear");
     let k2_clone = k2.clone();
 
     let clone1 = Arc::clone(&cache);
     let clone2 = Arc::clone(&cache);
+    let b1 = Arc::clone(&barrier);
+    let b2 = Arc::clone(&barrier);
+    let mut handles = Vec::new();
 
-    let jh1 = thread::spawn(move || {
-        clone1.put(k1, &1);
-    });
+    handles.push( thread::spawn(move || {
+        b1.wait();
+        let mut cache = clone1.lock().unwrap();
+        cache.put(k1, &1);
+    }));
 
-    let jh2 = thread::spawn(move || {
-        clone2.put(k2, &3);
-    });
+    handles.push(thread::spawn(move || {
+        b2.wait();
+        let mut cache = clone2.lock().unwrap();
+        cache.put(k2, &3);
+    }));
 
-    jh1.join().unwrap();
-    jh2.join().unwrap();
+    for handle in handles {
+        handle.join().unwrap();
+    }
 
-    if cache.get(&k2_clone).is_some() {
+    let mut unlocked_cache = cache.lock().unwrap();
+    if unlocked_cache.get(&k2_clone).is_some() {
         Ok(())
     } else {
         Err(String::from("Expected item 'pear' not found"))

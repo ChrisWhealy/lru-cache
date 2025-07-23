@@ -1,24 +1,34 @@
 use lru_cache::LruCache;
-use std::{num::NonZeroUsize, sync::Arc, thread};
+use std::{
+    num::NonZeroUsize,
+    sync::{Arc, Mutex},
+    thread,
+};
 
 fn main() {
-    let cache = Arc::new(LruCache::new(NonZeroUsize::new(2).unwrap()));
+    let am_cache = Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(2).unwrap())));
 
-    let cache1 = Arc::clone(&cache);
-    let jh1 = thread::spawn(move || {
-        // cache1.put("apple", 1);
-        cache1.put("banana", 1);
-        cache1.put("pear", 2);
-    });
+    let cache1 = Arc::clone(&am_cache);
+    let cache2 = Arc::clone(&am_cache);
+    let mut handles = Vec::new();
 
-    let cache2 = Arc::clone(&cache);
-    let jh2 = thread::spawn(move || {
-        cache2.put("apple", 3);
-    });
+    handles.push(thread::spawn(move || {
+        let mut unlocked_cache = cache1.lock().unwrap();
+        unlocked_cache.put("banana", 1);
+        unlocked_cache.put("pear", 2);
+    }));
 
-    jh1.join().unwrap();
-    jh2.join().unwrap();
+    handles.push(thread::spawn(move || {
+        let mut unlocked_cache = cache2.lock().unwrap();
+        unlocked_cache.put("apple", 3);
+    }));
 
-    println!("banana: {:?}", cache.get(&"banana")); // Should have been evicted
-    println!("apple:  {:?}", cache.get(&"pear")); // Should still be there
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let mut cache = am_cache.lock().unwrap();
+    println!("banana: {:?}", cache.get(&"banana")); // Might have been evicted
+    println!("apple:  {:?}", cache.get(&"apple"));  // Might have been evicted
+    println!("pear:   {:?}", cache.get(&"pear"));   // Should still be there
 }

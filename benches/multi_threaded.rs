@@ -79,7 +79,7 @@ fn get(c: &mut Criterion) {
                 b.iter_batched(
                     // Create pre-filled cache
                     || {
-                        let cache = MyLruCache::new(size);
+                        let mut cache = MyLruCache::new(size);
 
                         for i in 0..size.get() {
                             cache.put(gen_item_key(i), gen_item_value(i as u32));
@@ -101,7 +101,7 @@ fn get(c: &mut Criterion) {
                                 barrier_clone.wait();
 
                                 for _ in 0..OPERATIONS_PER_THREAD {
-                                    let unlocked_cache = cache_clone.lock().unwrap();
+                                    let mut unlocked_cache = cache_clone.lock().unwrap();
                                     let rnd_idx = rng.random_range(0..size.get());
                                     if let Some(_value) = unlocked_cache.get(&gen_item_key(rnd_idx))
                                     {
@@ -201,7 +201,7 @@ fn put(c: &mut Criterion) {
                 b.iter_batched(
                     // Wrap the cache in an Arc<Mutex<_>> to provide both shared ownership and mutable access
                     || {
-                        let cache = MyLruCache::new(size);
+                        let mut cache = MyLruCache::new(size);
 
                         // Pre-populate cache
                         for i in 0..size.get() {
@@ -220,7 +220,7 @@ fn put(c: &mut Criterion) {
 
                             let handle = thread::spawn(move || {
                                 barrier_clone.wait();
-                                let unlocked_cache = cache_clone.lock().unwrap();
+                                let mut unlocked_cache = cache_clone.lock().unwrap();
 
                                 // Perform a mix of operations
                                 for idx in 0..OPERATIONS_PER_THREAD {
